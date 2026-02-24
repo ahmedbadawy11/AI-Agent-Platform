@@ -1,2 +1,4 @@
 my_env
 src/.env
+.env
+docker/.env

@@ -1,0 +1,56 @@
+services:
+  pgvector:
+    image: pgvector/pgvector:0.8.1-pg17-trixie
+    container_name: pgvector
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - backend
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    image: ${APP_IMAGE:-ai-agent-platform:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-agent-platform
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=${APP_NAME:-AI-Agent-Platform}
+      - APP_VERSION=${APP_VERSION:-0.1.0}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - POSTGRES_HOST=pgvector
+      - POSTGRES_PORT=5432
+      - POSTGRES_USERNAME=${POSTGRES_USERNAME:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_MAIN_DATABASE=${POSTGRES_MAIN_DATABASE:-AI_Agent_Platform}
+      - GENERATION_MODEL_ID=${GENERATION_MODEL_ID:-gpt-4o-mini}
+      - GENERATION_DAFAULT_MAX_TOKENS=${GENERATION_DAFAULT_MAX_TOKENS:-200}
+      - GENERATION_DAFAULT_TEMPERATURE=${GENERATION_DAFAULT_TEMPERATURE:-0.1}
+      - STT_MODEL_ID=${STT_MODEL_ID:-whisper-1}
+      - STT_LANGUAGE=${STT_LANGUAGE:-}
+      - TTS_MODEL_ID=${TTS_MODEL_ID:-tts-1}
+      - TTS_VOICE=${TTS_VOICE:-alloy}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      pgvector:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+
+networks:
+  backend:
+
+volumes:
+  pgvector_data:
