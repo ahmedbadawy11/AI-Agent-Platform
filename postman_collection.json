@@ -1,0 +1,330 @@
+{
+	"info": {
+		"name": "AI Agent Platform",
+		"description": "Postman collection for testing all AI Agent Platform API endpoints.\n\nBase URL variable `{{base_url}}` defaults to `http://localhost:8000`.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "agent_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "session_id",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Agents",
+			"item": [
+				{
+					"name": "List All Agents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Response is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Create Agent",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Customer Support Bot\",\n  \"prompt\": \"You are a helpful customer support assistant. Be polite and concise.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"const data = pm.response.json();",
+									"pm.test('Has agent_id', () => pm.expect(data).to.have.property('agent_id'));",
+									"pm.collectionVariables.set('agent_id', data.agent_id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Update Agent",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Bot Name\",\n  \"prompt\": \"You are an updated helpful assistant.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Name updated', () => pm.expect(pm.response.json().name).to.eql('Updated Bot Name'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Sessions",
+			"item": [
+				{
+					"name": "Create Session",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/sessions",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "sessions"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"const data = pm.response.json();",
+									"pm.test('Has session_id', () => pm.expect(data).to.have.property('session_id'));",
+									"pm.collectionVariables.set('session_id', data.session_id);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "List Sessions for Agent",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/{{agent_id}}/sessions",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "{{agent_id}}", "sessions"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Response is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Get Session by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/agents/sessions/{{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "agents", "sessions", "{{session_id}}"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Correct session', () => pm.expect(pm.response.json().session_id).to.eql(parseInt(pm.collectionVariables.get('session_id'))));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Chat & Voice",
+			"item": [
+				{
+					"name": "List Messages in Session",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/sessions/session-messages?session_id={{session_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sessions", "session-messages"],
+							"query": [
+								{ "key": "session_id", "value": "{{session_id}}" }
+							]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('Response is array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Send Text Message (JSON)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": {{session_id}},\n  \"content\": \"Hello, how can you help me?\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sessions/send-message",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sessions", "send-message"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"const data = pm.response.json();",
+									"pm.test('Has assistant role', () => pm.expect(data.role).to.eql('assistant'));",
+									"pm.test('Has content', () => pm.expect(data.content).to.be.a('string'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Send Text Message (Stream SSE)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": {{session_id}},\n  \"content\": \"Tell me a joke.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sessions/stream-message",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sessions", "stream-message"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('SSE content type', () => pm.expect(pm.response.headers.get('content-type')).to.include('text/event-stream'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				},
+				{
+					"name": "Send Voice Message",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "session_id",
+									"value": "{{session_id}}",
+									"type": "text"
+								},
+								{
+									"key": "audio",
+									"type": "file",
+									"src": "",
+									"description": "Select an audio file (e.g. .webm, .mp3)"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/sessions/send-voice-message",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "sessions", "send-voice-message"]
+						}
+					},
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status 200', () => pm.response.to.have.status(200));",
+									"pm.test('SSE content type', () => pm.expect(pm.response.headers.get('content-type')).to.include('text/event-stream'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}
