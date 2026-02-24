@@ -1,0 +1,23 @@
+services:
+  pgvector:
+    image: pgvector/pgvector:0.8.1-pg17-trixie
+    container_name: pgvector
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+
+    environment:
+      # - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      # - POSTGRES_DB=pgvector
+    networks:
+      - backend 
+    restart: always
+
+
+networks:
+  backend:
+
+volumes:
+  pgvector_data:

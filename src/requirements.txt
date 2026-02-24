@@ -1,0 +1,20 @@
+# API Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Configuration
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Database
+sqlalchemy>=2.0.0
+asyncpg>=0.27.0
+alembic>=1.13.0
+psycopg2>=2.9.0
+
+# OpenAI (chat, STT, TTS)
+openai>=1.0.0
+python-multipart>=0.0.9
+
+# Audio conversion for STT (webm/opus -> wav for Whisper). Requires ffmpeg on PATH for voice uploads.
+pydub>=0.25.0
