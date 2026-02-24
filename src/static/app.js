@@ -430,6 +430,9 @@ async function sendVoice(blob) {
             }
             flushSbQueue();
           });
+          while (audioChunks.length > 0) {
+            sbQueue.push(audioChunks.shift());
+          }
           flushSbQueue();
         }, { once: true });
       }
