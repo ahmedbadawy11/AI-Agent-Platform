@@ -3,6 +3,7 @@ Conversation: message history and sending messages (text + voice).
 Single goal — support UI: type/send message, record audio and send, show user message and AI response.
 """
 import json
+import re
 from datetime import datetime, timezone
 
 from openai import APIConnectionError
@@ -120,22 +121,21 @@ async def stream_text_message(db_client, openai_provider, session_id: int, conte
     yield 'data: {"done": true}\n\n'
 
 
-async def send_voice_message(db_client, openai_provider, session_id: int, audio_bytes: bytes, audio_filename: str = "audio.webm") -> tuple[bytes | None, str | None]:
-    """
-    Voice flow: STT -> store user message -> LLM -> store assistant message -> TTS.
-    Returns (audio_bytes, error_message). Async request/response as per assessment.
-    """
-    session_model = SessionModel(db_client)
-    message_model = MessageModel(db_client)
-    agent_model = AgentModel(db_client)
+_SENTENCE_END = re.compile(r'(?<=[.!?。？！])\s+')
 
-    session = await session_model.get_by_id(session_id)
-    if not session:
-        return None, "Session not found"
-    agent = await agent_model.get_by_id(session.agent_id)
-    if not agent:
-        return None, "Agent not found"
 
+def _split_sentences(text: str) -> list[str]:
+    """Split text on sentence-ending punctuation followed by whitespace."""
+    parts = _SENTENCE_END.split(text)
+    return [p for p in parts if p.strip()]
+
+
+def run_voice_stt(openai_provider, audio_bytes: bytes, audio_filename: str = "audio.webm") -> tuple[str | None, str | None]:
+    """
+    Run STT separately so the router can return a proper error HTTP response
+    before committing to a streaming response.
+    Returns (transcribed_text, error_message).
+    """
     try:
         text = openai_provider.speech_to_text(audio_bytes, filename=audio_filename)
     except (APIConnectionError, httpx.ConnectError):
@@ -144,29 +144,78 @@ async def send_voice_message(db_client, openai_provider, session_id: int, audio_
         return None, f"Speech-to-text error: {str(e)}"
     if not text or not text.strip():
         return None, "Speech-to-text produced no text"
+    return text.strip(), None
 
-    user_message = Message(session_id=session_id, role=OpenAIEnums.ROLE_USER.value, content=text.strip())
+
+async def stream_voice_after_stt(db_client, openai_provider, session_id: int, user_text: str):
+    """
+    Streaming voice flow (called after STT succeeds):
+    Store user message -> stream LLM by sentences -> TTS each sentence -> yield events.
+    Yields (event_type, data) tuples:
+      ("user_text", str)       — the transcribed user message (show in UI immediately)
+      ("assistant_text", str)  — LLM text chunk (show in UI as it streams)
+      ("audio", bytes)         — raw mp3 bytes for playback
+      ("error", str)           — error (stream will end)
+      ("done", "")             — signals end of stream
+    """
+    session_model = SessionModel(db_client)
+    message_model = MessageModel(db_client)
+    agent_model = AgentModel(db_client)
+
+    session = await session_model.get_by_id(session_id)
+    if not session:
+        yield ("error", "Session not found")
+        return
+    agent = await agent_model.get_by_id(session.agent_id)
+    if not agent:
+        yield ("error", "Agent not found")
+        return
+
+    user_message = Message(session_id=session_id, role=OpenAIEnums.ROLE_USER.value, content=user_text)
     await message_model.create_message(user_message)
+
+    yield ("user_text", user_text)
 
     history = await message_model.list_by_session(session_id)
     openai_messages = _build_openai_messages(agent.prompt, history)
-    try:
-        assistant_content = openai_provider.generate_chat(openai_messages)
-    except (APIConnectionError, httpx.ConnectError):
-        return None, "Connection to LLM failed. Check OPENAI_API_KEY and network."
-    if assistant_content is None:
-        return None, "Failed to generate assistant response"
-
-    assistant_message = Message(session_id=session_id, role=OpenAIEnums.ROLE_ASSISTANT.value, content=assistant_content)
-    await message_model.create_message(assistant_message)
-    session.updated_at = datetime.now(timezone.utc)
-    await session_model.update_session(session)
 
     voice = getattr(openai_provider, "tts_voice", "alloy") or "alloy"
+    accumulated_llm = []
+    sentence_buffer = ""
+
     try:
-        audio_out = openai_provider.text_to_speech(assistant_content, voice=voice)
+        for chunk in openai_provider.generate_chat_stream(openai_messages):
+            accumulated_llm.append(chunk)
+            sentence_buffer += chunk
+            yield ("assistant_text", chunk)
+
+            sentences = _split_sentences(sentence_buffer)
+            if len(sentences) > 1:
+                for sentence in sentences[:-1]:
+                    for audio_chunk in openai_provider.text_to_speech_stream(sentence, voice=voice):
+                        yield ("audio", audio_chunk)
+                sentence_buffer = sentences[-1]
     except (APIConnectionError, httpx.ConnectError):
-        return None, "Connection to LLM failed. Check OPENAI_API_KEY and network."
-    if audio_out is None:
-        return None, "Text-to-speech failed"
-    return audio_out, None
+        yield ("error", "Connection to LLM failed. Check OPENAI_API_KEY and network.")
+        return
+
+    if sentence_buffer.strip():
+        try:
+            for audio_chunk in openai_provider.text_to_speech_stream(sentence_buffer, voice=voice):
+                yield ("audio", audio_chunk)
+        except (APIConnectionError, httpx.ConnectError):
+            yield ("error", "Connection to LLM failed during final TTS.")
+            return
+
+    full_content = "".join(accumulated_llm)
+    if full_content:
+        assistant_message = Message(
+            session_id=session_id,
+            role=OpenAIEnums.ROLE_ASSISTANT.value,
+            content=full_content,
+        )
+        await message_model.create_message(assistant_message)
+        session.updated_at = datetime.now(timezone.utc)
+        await session_model.update_session(session)
+
+    yield ("done", "")

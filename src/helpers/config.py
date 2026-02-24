@@ -19,6 +19,7 @@ class settings(BaseSettings):
     GENERATION_DAFAULT_MAX_TOKENS: int | None = None
     GENERATION_DAFAULT_TEMPERATURE: float | None = None
     STT_MODEL_ID: str = None
+    STT_LANGUAGE: str | None = None
     TTS_MODEL_ID: str = None
     TTS_VOICE: str = None
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR

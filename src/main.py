@@ -61,6 +61,7 @@ async def lifespan(app: FastAPI):
     app.openai_provider.set_generation_model(model_id=settings.GENERATION_MODEL_ID)
  
     app.openai_provider.set_stt_model(getattr(settings, "STT_MODEL_ID", "whisper-1") or "whisper-1")
+    app.openai_provider.stt_language = getattr(settings, "STT_LANGUAGE", None) or None
     app.openai_provider.set_tts_model(getattr(settings, "TTS_MODEL_ID", "tts-1") or "tts-1")
     app.openai_provider.tts_voice = getattr(settings, "TTS_VOICE", "alloy") or "alloy"
     logger.info("Application startup complete (DB and OpenAI provider ready).")

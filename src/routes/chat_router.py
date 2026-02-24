@@ -1,8 +1,11 @@
 """
 Chat and voice endpoints: list messages, send text (optional stream), send voice (audio upload).
 """
+import json
+from base64 import b64encode
+
 from fastapi import APIRouter, Request, UploadFile, File, Form, Query
-from fastapi.responses import Response, StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from controllers import conversation
 from routes.schemes import SendMessageRequest, MessageResponse, ErrorResponse
@@ -49,7 +52,7 @@ async def send_text_message_stream(request: Request, body: SendMessageRequest):
     return StreamingResponse(gen, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@chat_router.post("/send-voice-message", summary="Send voice message (audio file); returns audio response", responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
+@chat_router.post("/send-voice-message", summary="Send voice message; streams SSE with text + audio", responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
 async def send_voice_message(
     request: Request,
     session_id: int = Form(..., description="Session ID"),
@@ -60,10 +63,29 @@ async def send_voice_message(
         return JSONResponse(status_code=503, content=ErrorResponse(detail="LLM provider not available").model_dump())
     filename = audio.filename or "audio.webm"
     content = await audio.read()
-    audio_bytes, err = await conversation.send_voice_message(
-        get_db(request), provider, session_id, content, audio_filename=filename
+
+    stt_text, stt_error = conversation.run_voice_stt(provider, content, filename)
+    if stt_error:
+        status = 400 if "no text" in stt_error.lower() or "speech-to-text" in stt_error.lower() else 500
+        return JSONResponse(status_code=status, content=ErrorResponse(detail=stt_error).model_dump())
+
+    async def sse_generator():
+        async for event_type, data in conversation.stream_voice_after_stt(
+            get_db(request), provider, session_id, stt_text
+        ):
+            if event_type == "audio":
+                yield f"data: {json.dumps({'type': 'audio', 'chunk': b64encode(data).decode()})}\n\n"
+            elif event_type == "user_text":
+                yield f"data: {json.dumps({'type': 'user_text', 'content': data})}\n\n"
+            elif event_type == "assistant_text":
+                yield f"data: {json.dumps({'type': 'assistant_text', 'content': data})}\n\n"
+            elif event_type == "error":
+                yield f"data: {json.dumps({'type': 'error', 'content': data})}\n\n"
+            elif event_type == "done":
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    if err:
-        status = 400 if "no text" in err.lower() or "STT" in err else 500
-        return JSONResponse(status_code=status, content=ErrorResponse(detail=err).model_dump())
-    return Response(content=audio_bytes, media_type="audio/mpeg")

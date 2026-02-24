@@ -354,6 +354,26 @@ function stopRecording() {
   setVoiceStatus('Sending...');
 }
 
+function appendUserMessage(content) {
+  const el = messagesEl();
+  const div = document.createElement('div');
+  div.className = 'message user';
+  div.innerHTML = `<div class="content">${escapeHtml(content)}</div><div class="time">${formatTime(new Date().toISOString())}</div>`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  state.messages.push({ role: 'user', content, created_at: new Date().toISOString() });
+}
+
+function appendAssistantMessageStreaming() {
+  const el = messagesEl();
+  const div = document.createElement('div');
+  div.className = 'message assistant';
+  div.innerHTML = `<div class="content markdown"></div><div class="time">${formatTime(new Date().toISOString())}</div>`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  return div.querySelector('.content');
+}
+
 async function sendVoice(blob) {
   if (!state.currentSessionId) {
     setVoiceStatus('Select a chat first (or create a new chat).', true);
@@ -380,12 +400,125 @@ async function sendVoice(blob) {
       setTimeout(() => setVoiceStatus('Click mic to start recording, click again to send.'), 5000);
       return;
     }
-    const audioBlob = await res.blob();
-    const url = URL.createObjectURL(audioBlob);
-    const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
-    audio.play();
-    await loadMessages();
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let assistantContentEl = null;
+    let assistantFull = '';
+    const audioChunks = [];
+    let audioPlaying = false;
+    let mediaSource = null;
+    let sourceBuffer = null;
+    let audioEl = null;
+    let sbQueue = [];
+    let sbAppending = false;
+
+    function initAudioPlayer() {
+      if (mediaSource) return;
+      if (window.MediaSource && MediaSource.isTypeSupported('audio/mpeg')) {
+        mediaSource = new MediaSource();
+        audioEl = new Audio();
+        audioEl.src = URL.createObjectURL(mediaSource);
+        mediaSource.addEventListener('sourceopen', () => {
+          sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+          sourceBuffer.addEventListener('updateend', () => {
+            sbAppending = false;
+            if (!audioPlaying && audioEl.buffered.length > 0) {
+              audioPlaying = true;
+              setVoiceStatus('Playing response...');
+              audioEl.play().catch(() => {});
+            }
+            flushSbQueue();
+          });
+          flushSbQueue();
+        }, { once: true });
+      }
+    }
+
+    function flushSbQueue() {
+      if (sbAppending || !sourceBuffer || sbQueue.length === 0) return;
+      sbAppending = true;
+      sourceBuffer.appendBuffer(sbQueue.shift());
+    }
+
+    function feedAudio(bytes) {
+      initAudioPlayer();
+      if (sourceBuffer) {
+        sbQueue.push(bytes);
+        flushSbQueue();
+      } else {
+        audioChunks.push(bytes);
+      }
+    }
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let ev;
+        try { ev = JSON.parse(line.slice(6)); } catch (_) { continue; }
+
+        if (ev.type === 'user_text') {
+          removeGeneratingIndicator();
+          appendUserMessage(ev.content);
+          showGeneratingIndicator();
+        } else if (ev.type === 'assistant_text') {
+          if (!assistantContentEl) {
+            removeGeneratingIndicator();
+            assistantContentEl = appendAssistantMessageStreaming();
+          }
+          assistantFull += ev.content;
+          assistantContentEl.innerHTML = renderMarkdown(assistantFull);
+          messagesEl().scrollTop = messagesEl().scrollHeight;
+        } else if (ev.type === 'audio') {
+          const bytes = Uint8Array.from(atob(ev.chunk), c => c.charCodeAt(0));
+          feedAudio(bytes);
+        } else if (ev.type === 'done') {
+          if (assistantFull) {
+            state.messages.push({ role: 'assistant', content: assistantFull, created_at: new Date().toISOString() });
+          }
+        } else if (ev.type === 'error') {
+          setVoiceStatus(ev.content || 'Voice processing error', true);
+        }
+      }
+    }
+
+    // Finalize audio playback
+    if (mediaSource && sourceBuffer) {
+      const waitFlush = () => new Promise(r => {
+        if (sbQueue.length === 0 && !sbAppending) return r();
+        sourceBuffer.addEventListener('updateend', function check() {
+          if (sbQueue.length === 0 && !sbAppending) {
+            sourceBuffer.removeEventListener('updateend', check);
+            r();
+          } else {
+            flushSbQueue();
+          }
+        });
+        flushSbQueue();
+      });
+      await waitFlush();
+      if (mediaSource.readyState === 'open') mediaSource.endOfStream();
+      if (audioEl) {
+        await new Promise(r => {
+          if (audioEl.ended) return r();
+          audioEl.onended = r;
+        });
+        URL.revokeObjectURL(audioEl.src);
+      }
+    } else if (audioChunks.length > 0) {
+      // Fallback: play buffered audio
+      const audioBlob = new Blob(audioChunks, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(audioBlob);
+      const fallbackAudio = new Audio(url);
+      setVoiceStatus('Playing response...');
+      fallbackAudio.onended = () => URL.revokeObjectURL(url);
+      fallbackAudio.play();
+    }
+
     setVoiceStatus('Click mic to start recording, click again to send.');
   } catch (err) {
     console.error('Voice send error:', err);

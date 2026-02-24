@@ -1,6 +1,4 @@
 import logging
-import tempfile
-import os
 
 from openai import OpenAI
 
@@ -16,6 +14,7 @@ class OpenAIProvider():
         self.default_generation_temperature = default_generation_temperature
         self.generation_model_id = None
         self.stt_model_id = None
+        self.stt_language = None
         self.tts_model_id = None
         self.tts_voice = None
       
@@ -95,42 +94,26 @@ class OpenAIProvider():
 
     def speech_to_text(self, audio_file, filename: str = "audio.webm") -> str | None:
         """Convert audio file to text using OpenAI transcription API."""
-        
         if not self.client:
             self.logger.error("OpenAI client is not initialized.")
             return None
 
         model = getattr(self, "stt_model_id", None) or "whisper-1"
 
-        # Ensure we have bytes
         if hasattr(audio_file, "read"):
             audio_bytes = audio_file.read()
         else:
             audio_bytes = bytes(audio_file)
 
-        # Whisper needs a file with correct extension so it recognizes the format.
-        # BytesIO without a filename can be sent as "file" with no extension and get "Unrecognized file format".
-        ext = os.path.splitext(filename)[1] or ".webm"
-        if not ext.startswith("."):
-            ext = "." + ext
+        kwargs = {"model": model, "file": (filename, audio_bytes)}
+        if self.stt_language:
+            kwargs["language"] = self.stt_language
+
         try:
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-                tmp.write(audio_bytes)
-                tmp_path = tmp.name
-            try:
-                with open(tmp_path, "rb") as f:
-                    response = self.client.audio.transcriptions.create(
-                        model=model,
-                        file=f,
-                    )
-                if response and hasattr(response, "text"):
-                    return response.text.strip()
-                return None
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
+            response = self.client.audio.transcriptions.create(**kwargs)
+            if response and hasattr(response, "text"):
+                return response.text.strip()
+            return None
         except Exception as e:
             self.logger.error("Speech-to-text error: %s", e)
             return None
@@ -153,6 +136,22 @@ class OpenAIProvider():
         except Exception as e:
             self.logger.error("Text-to-speech error: %s", e)
             return None
+
+    def text_to_speech_stream(self, text: str, voice: str = "alloy"):
+        """Convert text to audio and yield raw bytes in chunks (for streaming to client)."""
+        if not self.client:
+            self.logger.error("OpenAI client is not initialized.")
+            return
+        model = getattr(self, "tts_model_id", None) or "tts-1"
+        try:
+            response = self.client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=text,
+            )
+            yield from response.iter_bytes(chunk_size=4096)
+        except Exception as e:
+            self.logger.error("Text-to-speech streaming error: %s", e)
 
     def construct_prompt(self, prompt: str, role: dict):
         # for openai we can use system role to set the behavior of the model
