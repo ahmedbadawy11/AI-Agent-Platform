@@ -34,14 +34,6 @@ async def get_session(request: Request, session_id: int):
     return session_to_response(session)
 
 
-@sessions_router.delete("/sessions/{session_id}", summary="Delete session", response_model=DeletedResponse, responses={404: {"model": ErrorResponse}})
-async def delete_session(request: Request, session_id: int):
-    model = SessionModel(get_db(request))
-    ok = await model.delete_session(session_id)
-    if not ok:
-        return JSONResponse(status_code=404, content=ErrorResponse(detail="Session not found").model_dump())
-    return DeletedResponse()
-
 
 @sessions_router.get("/{agent_id}/sessions", summary="List sessions for an agent", response_model=list[SessionResponse])
 async def list_sessions(request: Request, agent_id: int):

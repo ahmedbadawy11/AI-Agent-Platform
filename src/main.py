@@ -59,11 +59,7 @@ async def lifespan(app: FastAPI):
         default_generation_temperature=settings.GENERATION_DAFAULT_TEMPERATURE,
     )
     app.openai_provider.set_generation_model(model_id=settings.GENERATION_MODEL_ID)
-    if settings.EMBEDDING_MODEL_ID and settings.EMBEDDING_MODEL_SIZE:
-        app.openai_provider.set_embedding_model(
-            model_id=settings.EMBEDDING_MODEL_ID,
-            embedding_size=settings.EMBEDDING_MODEL_SIZE,
-        )
+ 
     app.openai_provider.set_stt_model(getattr(settings, "STT_MODEL_ID", "whisper-1") or "whisper-1")
     app.openai_provider.set_tts_model(getattr(settings, "TTS_MODEL_ID", "tts-1") or "tts-1")
     app.openai_provider.tts_voice = getattr(settings, "TTS_VOICE", "alloy") or "alloy"
@@ -96,7 +92,7 @@ async def favicon():
     """Avoid 404 when the browser requests a favicon."""
     return Response(status_code=204)
 
-app.include_router(base.base_router)
+
 app.include_router(api.api_router, prefix="/api/v1")
 
 

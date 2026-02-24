@@ -18,13 +18,13 @@ def get_openai_provider(request: Request):
     return getattr(request.app, "openai_provider", None)
 
 
-@chat_router.get("/messages", summary="List messages in a session", response_model=list[MessageResponse])
+@chat_router.get("/session-messages", summary="List messages in a session", response_model=list[MessageResponse])
 async def list_messages(request: Request, session_id: int = Query(..., description="Session ID")):
     return await conversation.get_messages(get_db(request), session_id)
 
 
 @chat_router.post(
-    "/messages",
+    "/send-message",
     summary="Send a text message; returns assistant reply (JSON)",
     response_model=MessageResponse,
     responses={404: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
@@ -39,7 +39,7 @@ async def send_text_message(request: Request, body: SendMessageRequest):
     return out
 
 
-@chat_router.post("/messages/stream", summary="Send a text message; stream assistant reply (SSE)", responses={503: {"model": ErrorResponse}})
+@chat_router.post("/stream-message", summary="Send a text message; stream assistant reply (SSE)", responses={503: {"model": ErrorResponse}})
 async def send_text_message_stream(request: Request, body: SendMessageRequest):
     """Stream LLM response as Server-Sent Events. Each event: data: {\"content\": \"chunk\"}. Final event: data: {\"done\": true}."""
     provider = get_openai_provider(request)
@@ -49,7 +49,7 @@ async def send_text_message_stream(request: Request, body: SendMessageRequest):
     return StreamingResponse(gen, media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@chat_router.post("/voice", summary="Send voice message (audio file); returns audio response", responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
+@chat_router.post("/send-voice-message", summary="Send voice message (audio file); returns audio response", responses={400: {"model": ErrorResponse}, 500: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
 async def send_voice_message(
     request: Request,
     session_id: int = Form(..., description="Session ID"),

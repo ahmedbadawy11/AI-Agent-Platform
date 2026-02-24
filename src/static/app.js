@@ -135,7 +135,7 @@ async function loadSessions() {
 
 async function loadMessages() {
   if (!state.currentSessionId) return;
-  state.messages = await request(`/sessions/messages?session_id=${state.currentSessionId}`);
+  state.messages = await request(`/sessions/session-messages?session_id=${state.currentSessionId}`);
   selectedSessionInfoEl().textContent = `Selected session: session_${state.currentSessionId}`;
   renderMessages();
 }
@@ -229,7 +229,7 @@ async function sendMessage(useStream = true) {
     if (useStream) {
       let full = '';
       let contentEl = null;
-      const res = await fetch(API + '/sessions/messages/stream', {
+      const res = await fetch(API + '/sessions/stream-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: state.currentSessionId, content })
@@ -271,7 +271,7 @@ async function sendMessage(useStream = true) {
       }
       state.messages.push({ role: 'assistant', content: full, created_at: new Date().toISOString() });
     } else {
-      const reply = await request('/sessions/messages', {
+      const reply = await request('/sessions/send-message', {
         method: 'POST',
         body: JSON.stringify({ session_id: state.currentSessionId, content })
       });
@@ -367,7 +367,7 @@ async function sendVoice(blob) {
     const fd = new FormData();
     fd.append('session_id', state.currentSessionId);
     fd.append('audio', blob, 'audio.webm');
-    const res = await fetch(API + '/sessions/voice', {
+    const res = await fetch(API + '/sessions/send-voice-message', {
       method: 'POST',
       body: fd
     });

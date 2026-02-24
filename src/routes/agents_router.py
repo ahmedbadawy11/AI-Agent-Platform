@@ -10,7 +10,6 @@ from routes.schemes import (
     AgentCreate,
     AgentUpdate,
     AgentResponse,
-    DeletedResponse,
     ErrorResponse,
 )
 
@@ -38,13 +37,6 @@ async def list_agents(request: Request):
     return [agent_to_response(a) for a in agents]
 
 
-@agents_router.get("/{agent_id}", summary="Get agent by id", response_model=AgentResponse, responses={404: {"model": ErrorResponse}})
-async def get_agent(request: Request, agent_id: int):
-    model = AgentModel(get_db(request))
-    agent = await model.get_by_id(agent_id)
-    if agent is None:
-        return JSONResponse(status_code=404, content=ErrorResponse(detail="Agent not found").model_dump())
-    return agent_to_response(agent)
 
 
 @agents_router.post("", summary="Create agent", response_model=AgentResponse)
@@ -74,10 +66,4 @@ async def update_agent(request: Request, agent_id: int, body: AgentUpdate):
     return agent_to_response(updated)
 
 
-@agents_router.delete("/{agent_id}", summary="Delete agent", response_model=DeletedResponse, responses={404: {"model": ErrorResponse}})
-async def delete_agent(request: Request, agent_id: int):
-    model = AgentModel(get_db(request))
-    ok = await model.delete_agent(agent_id)
-    if not ok:
-        return JSONResponse(status_code=404, content=ErrorResponse(detail="Agent not found").model_dump())
-    return DeletedResponse()
+
