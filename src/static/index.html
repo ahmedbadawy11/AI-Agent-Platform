@@ -20,6 +20,7 @@
         <h2>add a new ai agent</h2>
         <input type="text" id="new-agent-name" placeholder="New agent name" />
         <textarea id="new-agent-prompt" placeholder="New agent prompt (e.g., You are a helpful dental assistant.)" rows="4"></textarea>
+        <input type="text" id="new-agent-voice-id" placeholder="ElevenLabs Voice ID (optional)" />
         <button type="button" id="create-agent-btn" class="btn btn-primary">Create Agent</button>
       </section>
       <section class="edit-agent hidden" id="edit-agent-section">
@@ -27,6 +28,7 @@
         <input type="hidden" id="edit-agent-id" />
         <input type="text" id="edit-agent-name" placeholder="Agent name" />
         <textarea id="edit-agent-prompt" placeholder="Agent prompt" rows="4"></textarea>
+        <input type="text" id="edit-agent-voice-id" placeholder="ElevenLabs Voice ID (optional)" />
         <button type="button" id="save-agent-btn" class="btn btn-secondary">Save</button>
         <button type="button" id="cancel-edit-btn" class="btn btn-ghost">Cancel</button>
       </section>
@@ -45,6 +47,13 @@
       <p class="session-info" id="selected-session-info">Selected session: —</p>
       <p class="voice-status" id="voice-status">Voice: Click mic to start recording, then click again to send.</p>
       <div class="messages" id="messages"></div>
+      <div class="style-row">
+        <label for="style-select">Style:</label>
+        <select id="style-select" title="Choose response style">
+          <option value="">Default</option>
+        </select>
+        <span class="style-description" id="style-description"></span>
+      </div>
       <div class="input-row">
         <input type="text" id="message-input" placeholder="Type your message or use voice..." title="type a message" />
         <button type="button" id="send-btn" class="btn btn-primary" title="send a message">Send</button>
@@ -55,6 +64,6 @@
     </main>
   </div>
   <script>window.marked && (marked.setOptions({ breaks: true }));</script>
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>

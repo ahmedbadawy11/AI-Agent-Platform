@@ -33,14 +33,61 @@ async def get_messages(db_client, session_id: int) -> list:
     return [_message_to_dict(m) for m in messages]
 
 
-def _build_openai_messages(agent_prompt: str, history: list) -> list[dict]:
-    out = [{"role": OpenAIEnums.ROLE_SYSTEM.value, "content": agent_prompt}]
+STYLE_DESCRIPTIONS: dict[str, str] = {
+    "Professional": (
+        "Use a polished, business-appropriate tone. Be clear, structured, and objective. "
+        "Avoid slang or overly casual language. Prioritize accuracy and credibility."
+    ),
+    "Friendly": (
+        "Be warm, approachable, and conversational. Use a positive and encouraging tone. "
+        "Feel free to use light language, but stay helpful and informative."
+    ),
+    "Concise": (
+        "Keep responses short and to the point. Eliminate unnecessary words. "
+        "Use bullet points or brief sentences. Prioritize clarity over elaboration."
+    ),
+    "Detailed": (
+        "Provide thorough, in-depth responses with examples, context, and explanations. "
+        "Anticipate follow-up questions and address them proactively."
+    ),
+    "Creative": (
+        "Use imaginative and original language. Incorporate metaphors, storytelling, or unconventional angles. "
+        "Aim to surprise and inspire while staying relevant."
+    ),
+    "Formal": (
+        "Use dignified, respectful language suitable for official or academic contexts. "
+        "Maintain proper grammar, avoid contractions, and use precise vocabulary."
+    ),
+    "Casual": (
+        "Write as if chatting with a friend. Use relaxed grammar, contractions, and everyday language. "
+        "Keep things easygoing and relatable."
+    ),
+    "Humorous": (
+        "Incorporate wit, wordplay, or light humor into your responses. "
+        "Keep it tasteful and relevant — the goal is to inform while entertaining."
+    ),
+    "Empathetic": (
+        "Show understanding and sensitivity. Acknowledge feelings and concerns. "
+        "Use supportive, compassionate language and validate the user's perspective."
+    ),
+    "Persuasive": (
+        "Build a compelling case for your points. Use logical arguments, evidence, and confident language. "
+        "Aim to convince while remaining respectful of other viewpoints."
+    ),
+}
+
+
+def _build_openai_messages(agent_prompt: str, history: list, style: str | None = None) -> list[dict]:
+    system_content = agent_prompt
+    if style and style in STYLE_DESCRIPTIONS:
+        system_content += f"\n\nIMPORTANT — Respond using a {style} communication style: {STYLE_DESCRIPTIONS[style]}"
+    out = [{"role": OpenAIEnums.ROLE_SYSTEM.value, "content": system_content}]
     for m in history:
         out.append({"role": m.role, "content": m.content})
     return out
 
 
-async def send_text_message(db_client, openai_provider, session_id: int, content: str) -> dict | None:
+async def send_text_message(db_client, openai_provider, session_id: int, content: str, style: str | None = None) -> dict | None:
     """
     Send a text message: store user message, generate assistant reply (non-streaming), store it, return.
     Use for non-streaming clients.
@@ -60,7 +107,7 @@ async def send_text_message(db_client, openai_provider, session_id: int, content
     await message_model.create_message(user_message)
 
     history = await message_model.list_by_session(session_id)
-    openai_messages = _build_openai_messages(agent.prompt, history)
+    openai_messages = _build_openai_messages(agent.prompt, history, style=style)
     try:
         assistant_content = openai_provider.generate_chat(openai_messages)
     except (APIConnectionError, httpx.ConnectError):
@@ -76,7 +123,7 @@ async def send_text_message(db_client, openai_provider, session_id: int, content
     return _message_to_dict(assistant_message)
 
 
-async def stream_text_message(db_client, openai_provider, session_id: int, content: str):
+async def stream_text_message(db_client, openai_provider, session_id: int, content: str, style: str | None = None):
     """
     Send a text message with streaming: store user message, stream LLM response, persist assistant message when done.
     Yields SSE-style text chunks (data: {"content": chunk}); after stream, saves assistant message to DB.
@@ -98,7 +145,7 @@ async def stream_text_message(db_client, openai_provider, session_id: int, conte
     await message_model.create_message(user_message)
 
     history = await message_model.list_by_session(session_id)
-    openai_messages = _build_openai_messages(agent.prompt, history)
+    openai_messages = _build_openai_messages(agent.prompt, history, style=style)
     accumulated = []
     try:
         for chunk in openai_provider.generate_chat_stream(openai_messages):
@@ -147,7 +194,7 @@ def run_voice_stt(openai_provider, audio_bytes: bytes, audio_filename: str = "au
     return text.strip(), None
 
 
-async def stream_voice_after_stt(db_client, openai_provider, session_id: int, user_text: str):
+async def stream_voice_after_stt(db_client, openai_provider, session_id: int, user_text: str, style: str | None = None):
     """
     Streaming voice flow (called after STT succeeds):
     Store user message -> stream LLM by sentences -> TTS each sentence -> yield events.
@@ -177,9 +224,9 @@ async def stream_voice_after_stt(db_client, openai_provider, session_id: int, us
     yield ("user_text", user_text)
 
     history = await message_model.list_by_session(session_id)
-    openai_messages = _build_openai_messages(agent.prompt, history)
+    openai_messages = _build_openai_messages(agent.prompt, history, style=style)
 
-    voice = getattr(openai_provider, "tts_voice", "alloy") or "alloy"
+    agent_voice_id = getattr(agent, "voice_id", None)
     accumulated_llm = []
     sentence_buffer = ""
 
@@ -192,7 +239,7 @@ async def stream_voice_after_stt(db_client, openai_provider, session_id: int, us
             sentences = _split_sentences(sentence_buffer)
             if len(sentences) > 1:
                 for sentence in sentences[:-1]:
-                    for audio_chunk in openai_provider.text_to_speech_stream(sentence, voice=voice):
+                    for audio_chunk in openai_provider.text_to_speech_stream(sentence, voice_id=agent_voice_id):
                         yield ("audio", audio_chunk)
                 sentence_buffer = sentences[-1]
     except (APIConnectionError, httpx.ConnectError):
@@ -201,7 +248,7 @@ async def stream_voice_after_stt(db_client, openai_provider, session_id: int, us
 
     if sentence_buffer.strip():
         try:
-            for audio_chunk in openai_provider.text_to_speech_stream(sentence_buffer, voice=voice):
+            for audio_chunk in openai_provider.text_to_speech_stream(sentence_buffer, voice_id=agent_voice_id):
                 yield ("audio", audio_chunk)
         except (APIConnectionError, httpx.ConnectError):
             yield ("error", "Connection to LLM failed during final TTS.")

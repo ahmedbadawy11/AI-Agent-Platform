@@ -6,7 +6,8 @@ let state = {
   sessions: [],
   currentSessionId: null,
   messages: [],
-  isGenerating: false
+  isGenerating: false,
+  styles: []
 };
 
 let generatingIndicatorEl = null;
@@ -60,6 +61,28 @@ function chatSessionSelect() { return document.getElementById('chat-session-sele
 function messagesEl() { return document.getElementById('messages'); }
 function currentAgentNameEl() { return document.getElementById('current-agent-name'); }
 function selectedSessionInfoEl() { return document.getElementById('selected-session-info'); }
+function getSelectedStyle() { const el = document.getElementById('style-select'); return el ? el.value || null : null; }
+
+async function loadStyles() {
+  try {
+    state.styles = await request('/sessions/styles');
+  } catch (_) {
+    state.styles = [];
+  }
+  const sel = document.getElementById('style-select');
+  sel.innerHTML = '<option value="">Default</option>' +
+    state.styles.map(s => `<option value="${escapeHtml(s.value)}" title="${escapeHtml(s.description)}">${escapeHtml(s.value)}</option>`).join('');
+  updateStyleDescription();
+}
+
+function updateStyleDescription() {
+  const descEl = document.getElementById('style-description');
+  if (!descEl) return;
+  const selected = getSelectedStyle();
+  if (!selected) { descEl.textContent = ''; return; }
+  const match = state.styles.find(s => s.value === selected);
+  descEl.textContent = match ? match.description : '';
+}
 
 function formatTime(iso) {
   if (!iso) return '';
@@ -167,10 +190,12 @@ function appendStreamingMessage(content, time) {
 async function createAgent() {
   const name = document.getElementById('new-agent-name').value.trim();
   const prompt = document.getElementById('new-agent-prompt').value.trim();
+  const voice_id = document.getElementById('new-agent-voice-id').value.trim() || null;
   if (!name || !prompt) return alert('Name and prompt required');
-  await request('/agents', { method: 'POST', body: JSON.stringify({ name, prompt }) });
+  await request('/agents', { method: 'POST', body: JSON.stringify({ name, prompt, voice_id }) });
   document.getElementById('new-agent-name').value = '';
   document.getElementById('new-agent-prompt').value = '';
+  document.getElementById('new-agent-voice-id').value = '';
   await loadAgents();
 }
 
@@ -179,14 +204,16 @@ function openEditAgent(agent) {
   document.getElementById('edit-agent-id').value = agent.agent_id;
   document.getElementById('edit-agent-name').value = agent.name;
   document.getElementById('edit-agent-prompt').value = agent.prompt;
+  document.getElementById('edit-agent-voice-id').value = agent.voice_id || '';
 }
 
 async function saveAgent() {
   const id = document.getElementById('edit-agent-id').value;
   const name = document.getElementById('edit-agent-name').value.trim();
   const prompt = document.getElementById('edit-agent-prompt').value.trim();
+  const voice_id = document.getElementById('edit-agent-voice-id').value.trim() || null;
   if (!name || !prompt) return alert('Name and prompt required');
-  await request(`/agents/${id}`, { method: 'PUT', body: JSON.stringify({ name, prompt }) });
+  await request(`/agents/${id}`, { method: 'PUT', body: JSON.stringify({ name, prompt, voice_id }) });
   document.getElementById('edit-agent-section').classList.add('hidden');
   await loadAgents();
   if (state.currentAgentId === parseInt(id, 10)) currentAgentNameEl().textContent = name;
@@ -229,10 +256,11 @@ async function sendMessage(useStream = true) {
     if (useStream) {
       let full = '';
       let contentEl = null;
+      const style = getSelectedStyle();
       const res = await fetch(API + '/sessions/stream-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: state.currentSessionId, content })
+        body: JSON.stringify({ session_id: state.currentSessionId, content, style })
       });
       if (!res.ok) {
         removeGeneratingIndicator();
@@ -273,7 +301,7 @@ async function sendMessage(useStream = true) {
     } else {
       const reply = await request('/sessions/send-message', {
         method: 'POST',
-        body: JSON.stringify({ session_id: state.currentSessionId, content })
+        body: JSON.stringify({ session_id: state.currentSessionId, content, style: getSelectedStyle() })
       });
       removeGeneratingIndicator();
       state.messages.push(reply);
@@ -387,6 +415,8 @@ async function sendVoice(blob) {
     const fd = new FormData();
     fd.append('session_id', state.currentSessionId);
     fd.append('audio', blob, 'audio.webm');
+    const style = getSelectedStyle();
+    if (style) fd.append('style', style);
     const res = await fetch(API + '/sessions/send-voice-message', {
       method: 'POST',
       body: fd
@@ -596,4 +626,7 @@ function onRecordClick(e) {
 recordBtn.addEventListener('click', onRecordClick);
 recordBtn.addEventListener('touchstart', e => { e.preventDefault(); onRecordClick(e); }, { passive: false });
 
+document.getElementById('style-select').addEventListener('change', updateStyleDescription);
+
 loadAgents();
+loadStyles();

@@ -30,6 +30,7 @@ class AgentCreate(BaseModel):
 
     name: str
     prompt: str
+    voice_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -37,6 +38,7 @@ class AgentUpdate(BaseModel):
 
     name: str | None = None
     prompt: str | None = None
+    voice_id: str | None = None
 
 
 class AgentResponse(BaseModel):
@@ -45,6 +47,7 @@ class AgentResponse(BaseModel):
     agent_id: int
     name: str
     prompt: str
+    voice_id: str | None = None
     created_at: str | None
     updated_at: str | None
 
@@ -69,6 +72,7 @@ class SendMessageRequest(BaseModel):
 
     session_id: int
     content: str
+    style: str | None = None
 
 
 class MessageResponse(BaseModel):

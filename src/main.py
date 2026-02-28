@@ -57,6 +57,8 @@ async def lifespan(app: FastAPI):
         api_key=settings.OPENAI_API_KEY,
         default_generation_max_output_tokens=settings.GENERATION_DAFAULT_MAX_TOKENS,
         default_generation_temperature=settings.GENERATION_DAFAULT_TEMPERATURE,
+        elevenlabs_api_key=settings.ELEVENLABS_API_KEY,
+        elevenlabs_voice_id=settings.ELEVENLABS_VOICE_ID,
     )
     app.openai_provider.set_generation_model(model_id=settings.GENERATION_MODEL_ID)
  

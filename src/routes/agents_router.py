@@ -25,6 +25,7 @@ def agent_to_response(a) -> AgentResponse:
         agent_id=a.agent_id,
         name=a.name,
         prompt=a.prompt,
+        voice_id=a.voice_id,
         created_at=a.created_at.isoformat() if a.created_at else None,
         updated_at=a.updated_at.isoformat() if a.updated_at else None,
     )
@@ -42,14 +43,8 @@ async def list_agents(request: Request):
 @agents_router.post("", summary="Create agent", response_model=AgentResponse)
 async def create_agent(request: Request, body: AgentCreate):
     model = AgentModel(get_db(request))
-    created = await model.create_agent(Agent(name=body.name, prompt=body.prompt))
-    return AgentResponse(
-        agent_id=created.agent_id,
-        name=created.name,
-        prompt=created.prompt,
-        created_at=created.created_at.isoformat() if created.created_at else None,
-        updated_at=created.updated_at.isoformat() if created.updated_at else None,
-    )
+    created = await model.create_agent(Agent(name=body.name, prompt=body.prompt, voice_id=body.voice_id))
+    return agent_to_response(created)
 
 
 @agents_router.put("/{agent_id}", summary="Update agent", response_model=AgentResponse, responses={404: {"model": ErrorResponse}})
@@ -62,6 +57,8 @@ async def update_agent(request: Request, agent_id: int, body: AgentUpdate):
         agent.name = body.name
     if body.prompt is not None:
         agent.prompt = body.prompt
+    if body.voice_id is not None:
+        agent.voice_id = body.voice_id
     updated = await model.update_agent(agent)
     return agent_to_response(updated)
 

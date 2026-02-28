@@ -1,6 +1,7 @@
 import logging
 
 from openai import OpenAI
+from elevenlabs import ElevenLabs
 
 from ..LLMEnums import OpenAIEnums
 
@@ -8,7 +9,9 @@ class OpenAIProvider():
 
     def __init__(self, api_key: str,
                 default_generation_max_output_tokens: int = 1000,
-                default_generation_temperature: float = 0.1):
+                default_generation_temperature: float = 0.1,
+                elevenlabs_api_key: str = None,
+                elevenlabs_voice_id: str = None):
         self.api_key = api_key
         self.default_generation_max_output_tokens = default_generation_max_output_tokens
         self.default_generation_temperature = default_generation_temperature
@@ -17,9 +20,16 @@ class OpenAIProvider():
         self.stt_language = None
         self.tts_model_id = None
         self.tts_voice = None
-      
+
+        self.elevenlabs_api_key = elevenlabs_api_key
+        self.elevenlabs_voice_id = elevenlabs_voice_id
+        self.elevenlabs_client = None
+
         self.client = OpenAI(api_key=api_key or "")
-        
+
+        if elevenlabs_api_key:
+            self.elevenlabs_client = ElevenLabs(api_key=elevenlabs_api_key)
+
         self.logger = logging.getLogger(__name__)
 
     def set_generation_model(self, model_id: str):
@@ -118,40 +128,49 @@ class OpenAIProvider():
             self.logger.error("Speech-to-text error: %s", e)
             return None
 
-    def text_to_speech(self, text: str, voice: str = "alloy") -> bytes | None:
-        """Convert text to audio bytes using OpenAI TTS."""
-        if not self.client:
-            self.logger.error("OpenAI client is not initialized.")
+    def text_to_speech(self, text: str, voice_id: str = None, **_kwargs) -> bytes | None:
+        """Convert text to audio bytes via ElevenLabs."""
+        effective_voice_id = voice_id or self.elevenlabs_voice_id
+        if not self.elevenlabs_client:
+            self.logger.error("ElevenLabs client is not initialized. Set ELEVENLABS_API_KEY.")
             return None
-        model = getattr(self, "tts_model_id", None) or "tts-1"
+        if not effective_voice_id:
+            self.logger.error("No ElevenLabs voice_id provided (set it on the agent or in ELEVENLABS_VOICE_ID).")
+            return None
         try:
-            response = self.client.audio.speech.create(
-                model=model,
-                voice=voice,
-                input=text,
+            audio_iterator = self.elevenlabs_client.text_to_speech.convert(
+                text=text,
+                voice_id=effective_voice_id,
+                model_id="eleven_multilingual_v2",
+                output_format="mp3_44100_128",
             )
-            if response and hasattr(response, "content"):
-                return response.content
-            return None
+            chunks = [chunk for chunk in audio_iterator]
+            return b"".join(chunks) if chunks else None
         except Exception as e:
-            self.logger.error("Text-to-speech error: %s", e)
+            self.logger.error("ElevenLabs text-to-speech error: %s", e)
             return None
 
-    def text_to_speech_stream(self, text: str, voice: str = "alloy"):
-        """Convert text to audio and yield raw bytes in chunks (for streaming to client)."""
-        if not self.client:
-            self.logger.error("OpenAI client is not initialized.")
+    def text_to_speech_stream(self, text: str, voice_id: str = None, **_kwargs):
+        """Stream text to audio in chunks via ElevenLabs."""
+        effective_voice_id = voice_id or self.elevenlabs_voice_id
+        if not self.elevenlabs_client:
+            self.logger.error("ElevenLabs client is not initialized. Set ELEVENLABS_API_KEY.")
             return
-        model = getattr(self, "tts_model_id", None) or "tts-1"
+        if not effective_voice_id:
+            self.logger.error("No ElevenLabs voice_id provided (set it on the agent or in ELEVENLABS_VOICE_ID).")
+            return
         try:
-            response = self.client.audio.speech.create(
-                model=model,
-                voice=voice,
-                input=text,
+            audio_iterator = self.elevenlabs_client.text_to_speech.convert(
+                text=text,
+                voice_id=effective_voice_id,
+                model_id="eleven_multilingual_v2",
+                output_format="mp3_44100_128",
             )
-            yield from response.iter_bytes(chunk_size=4096)
+            for chunk in audio_iterator:
+                if chunk:
+                    yield chunk
         except Exception as e:
-            self.logger.error("Text-to-speech streaming error: %s", e)
+            self.logger.error("ElevenLabs text-to-speech streaming error: %s", e)
 
     def construct_prompt(self, prompt: str, role: dict):
         # for openai we can use system role to set the behavior of the model

@@ -22,6 +22,8 @@ class settings(BaseSettings):
     STT_LANGUAGE: str | None = None
     TTS_MODEL_ID: str = None
     TTS_VOICE: str = None
+    ELEVENLABS_API_KEY: str | None = None
+    ELEVENLABS_VOICE_ID: str | None = None
     LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
 
 

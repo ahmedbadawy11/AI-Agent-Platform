@@ -239,10 +239,52 @@ body {
 .message .content.markdown a { color: #2563eb; }
 .message .content.markdown hr { border: none; border-top: 1px solid #e5e5e5; margin: 0.5em 0; }
 
+.style-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0 0;
+  flex-wrap: wrap;
+}
+
+.style-row label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #555;
+  white-space: nowrap;
+}
+
+.style-row select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.9rem;
+  min-width: 150px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.style-row select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.style-description {
+  font-size: 0.8rem;
+  color: #666;
+  line-height: 1.35;
+  flex-basis: 100%;
+  padding-left: 0.15rem;
+  min-height: 1.1em;
+}
+
 .input-row {
   display: flex;
   gap: 0.5rem;
-  padding: 0.75rem 0 0;
+  padding: 0.5rem 0 0;
   border-top: 1px solid #e5e5e5;
 }
 
